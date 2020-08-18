@@ -9,6 +9,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "commander": "^6.0.0",
     "dotenv": "^8.2.0",
     "moment": "^2.24.0",
     "node-fetch": "^2.6.0"
