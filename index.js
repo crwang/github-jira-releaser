@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 const JiraApi = require("./jira_api");
 const GithubApi = require("./github_api");
 const Versioning = require("./versioning");
