@@ -20,7 +20,98 @@ program
   .usage("[options] <file ...>")
   .option("-R, --repo [value]", "The repo")
   .option("-T, --tag [value]", "vyyyy.MM.dd.xx")
+  .option("-P, --previous [value]", "The previous commit")
+  .option("-C, --current [value]", "The current commit")
+  .option("--type [value]", "The action type")
+  .option("-E, --environment [value]", "The environment")
   .parse(process.argv);
+
+/**
+ * Works one of two ways
+ * 1. If the repo and tag are specified, it will create a release for that tag and add the issues to the release.
+ * 2. If the action and environment are specified, it will label the issues with the action value and environment value.
+ *
+ * node index --repo=<repo> --tag=<tag>
+ *
+ * or
+ *
+ * node index --previous=<previous> --current=<current> --action=<action> --environment=<environment>
+ *
+ */
+
+async function main() {
+  if (program.repo && program.tag) {
+    await createRelease(program.repo, program.tag, 12);
+  } else if (
+    program.repo &&
+    program.previous &&
+    program.current &&
+    program.type &&
+    program.environment
+  ) {
+    await labelIssuesForDeploy(
+      program.repo,
+      program.previous,
+      program.current,
+      program.type,
+      program.environment
+    );
+  } else {
+    exitProgram(
+      "You must specify a repo and tag OR a repo, previous commit, current commit, action type, and environment"
+    );
+  }
+}
+
+/**
+ * Labels the issue for the deploy action.
+ *
+ * This function searches through the git differences between previous and current commit,
+ * extracts the JIRA issue keys from the commit messages, and then labels the issue with the action and environment.
+ * @param {*} repo
+ * @param {*} previous
+ * @param {*} current
+ * @param {*} action
+ * @param {*} environment
+ */
+async function labelIssuesForDeploy(
+  repo,
+  previous,
+  current,
+  action,
+  environment
+) {
+  const jiraApi = new JiraApi(jiraUsername, jiraToken, jiraBaseUrl);
+  const githubApi = new GithubApi(githubToken, githubOwner, repo);
+
+  const commitsForRelease = await githubApi.compareBetweenCommits(
+    previous,
+    current
+  );
+
+  if (commitsForRelease) {
+    commitsForRelease.map((commit) => {
+      console.log(commit.commit.message);
+    });
+
+    // Add the JIRA tickets to the release
+    const jiraIssueKeys = getJiraIssuesFromCommits(commitsForRelease);
+    console.log(jiraIssueKeys);
+
+    // Add the Label to the appropriate JIRA Issues
+    await Promise.all(
+      jiraIssueKeys.map(async (issueKey) => {
+        await jiraApi.tagIssueWithEnvironmentAction(
+          issueKey,
+          action,
+          environment
+        );
+      })
+    );
+  } else {
+    console.log("no commits found");
+  }
+}
 
 /**
  * Currently assumes there's a git tag already
@@ -31,7 +122,11 @@ program
  * if it's a patch version, eg v2020.02.18.3 for now it includes .1 and .2
  *
  * we may need to rethink this with hotfixes since it might look junky
- * */
+ *
+ * @param {*} repo
+ * @param {*} version
+ * @param {*} hour
+ */
 async function createRelease(repo, version, hour) {
   const versioning = new Versioning();
   const jiraApi = new JiraApi(jiraUsername, jiraToken, jiraBaseUrl);
@@ -125,10 +220,4 @@ if (!jiraBaseUrl) {
   exitProgram("missing jira base url");
 }
 
-if (program.repo && program.tag) {
-  console.log(program.repo);
-  console.log(program.tag);
-  createRelease(program.repo, program.tag, 12);
-} else {
-  exitProgram("Missing required parameters");
-}
+main();
